@@ -1,0 +1,9 @@
+[package]
+name = "edenpoc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+cpal = "0.16.0"
+rustfft = "6.4.1"
