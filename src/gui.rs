@@ -8,10 +8,11 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
-    config: Arc<Mutex<AudioConfig>>,
+    active_config: Arc<Mutex<AudioConfig>>,
     pending_config: AudioConfig, // Local copy for sliders
     devices: Vec<String>,
-    selected_device_idx: usize,
+    active_device_idx: usize,
+    pending_device_idx: usize, // Local selection for device selector
     analyzer: Arc<Mutex<AudioAnalyzer>>,
     audio_stream: Option<AudioStream>,
     analyzer_metrics: Arc<Mutex<AudioMetrics>>,
@@ -51,10 +52,11 @@ impl AppState {
         let pending_config = config.lock().unwrap().clone();
 
         Self {
-            config,
+            active_config: config,
             pending_config,
             devices,
-            selected_device_idx,
+            pending_device_idx: selected_device_idx,
+            active_device_idx: selected_device_idx,
             analyzer,
             audio_stream,
             analyzer_metrics,
@@ -66,21 +68,29 @@ impl AppState {
     fn apply_settings(&mut self) {
         // Lock and copy pending config to shared config
         {
-            let mut config = self.config.lock().unwrap();
+            let mut config = self.active_config.lock().unwrap();
             *config = self.pending_config.clone();
         }
 
-        // Recreate the audio stream with the selected device
         self.audio_stream = audio_stream::create_audio_stream(
-            self.selected_device_idx,
+            self.pending_device_idx,
             &self.devices,
             self.analyzer.clone(),
         );
+
+        self.active_device_idx = self.pending_device_idx;
     }
 
     fn reset_to_default(&mut self) {
         let default_config = AudioConfig::default();
         self.pending_config = default_config.clone();
+    }
+
+    fn disable_apply_button(&self) -> bool {
+        let config_unchanged = self.pending_config == *self.active_config.lock().unwrap();
+        let device_unchanged = self.pending_device_idx == self.active_device_idx;
+
+        config_unchanged && device_unchanged
     }
 }
 
@@ -96,13 +106,13 @@ impl eframe::App for AppState {
                 egui::ComboBox::from_id_salt("device_selector")
                     .selected_text(
                         self.devices
-                            .get(self.selected_device_idx)
+                            .get(self.pending_device_idx)
                             .map(|name| name.as_str())
                             .unwrap_or("No devices"),
                     )
                     .show_ui(ui, |ui| {
                         for (idx, name) in self.devices.iter().enumerate() {
-                            ui.selectable_value(&mut self.selected_device_idx, idx, name);
+                            ui.selectable_value(&mut self.pending_device_idx, idx, name);
                         }
                     });
 
@@ -224,9 +234,12 @@ impl eframe::App for AppState {
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.button("Apply and reload").clicked() {
-                    self.apply_settings();
-                }
+                ui.add_enabled_ui(!self.disable_apply_button(), |ui| {
+                    if ui.button("Apply and reload").clicked() {
+                        self.apply_settings();
+                    }
+                });
+
                 if ui.button("↺ Reset to default").clicked() {
                     self.reset_to_default();
                 }
