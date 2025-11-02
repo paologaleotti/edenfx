@@ -50,8 +50,7 @@ fn main() -> Result<(), eframe::Error> {
                 thread::sleep(Duration::from_millis(interval));
 
                 let current_metrics = metrics.lock().unwrap().clone();
-                let new_output =
-                    controller.process(current_metrics.loudness, current_metrics.bass_energy);
+                let new_output = controller.process(current_metrics);
                 *output.lock().unwrap() = new_output;
             }
         })

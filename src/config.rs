@@ -1,6 +1,6 @@
 pub const APP_VERSION: &str = "v0.0.1";
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct AudioConfig {
     /// Sample rate in Hz. Standard CD quality is 44100 Hz.
     /// Higher = better frequency resolution but more CPU usage.

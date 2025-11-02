@@ -1,4 +1,4 @@
-use crate::config::AudioConfig;
+use crate::{analyzer::AudioMetrics, config::AudioConfig};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default, Debug)]
@@ -16,10 +16,13 @@ impl Controller {
         Self { config }
     }
 
-    pub fn process(&self, loudness: f32, bass_energy: f32) -> ControllerOutput {
+    pub fn process(&self, metrics: AudioMetrics) -> ControllerOutput {
         let threshold = self.config.lock().unwrap().drop_detection_threshold;
-        let is_drop = bass_energy > threshold && loudness > 0.7;
+        let is_drop = metrics.bass_energy > threshold && metrics.loudness > 0.7;
 
-        ControllerOutput { is_drop, loudness }
+        ControllerOutput {
+            is_drop,
+            loudness: metrics.loudness,
+        }
     }
 }
