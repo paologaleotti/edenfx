@@ -79,7 +79,7 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([500.0, 600.0])
-            .with_title("EDEN controller"),
+            .with_title("EDEN Controller"),
         ..Default::default()
     };
 
