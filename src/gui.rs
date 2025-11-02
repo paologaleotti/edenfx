@@ -3,6 +3,7 @@ use crate::audio_stream::{self, AudioStream};
 use crate::config::APP_VERSION;
 use crate::config::AudioConfig;
 use crate::controller::ControllerOutput;
+use crate::visual_engine::VisualEngine;
 use cpal::traits::{DeviceTrait, HostTrait};
 use eframe::egui;
 use log::{debug, info};
@@ -18,7 +19,8 @@ pub struct AppState {
     audio_stream: Option<AudioStream>,
     analyzer_metrics: Arc<Mutex<AudioMetrics>>,
     controller_output: Arc<Mutex<ControllerOutput>>,
-    visualizer_open: bool,
+    visuals_window_open: bool,
+    visuals_window: VisualEngine,
 }
 
 impl AppState {
@@ -67,6 +69,8 @@ impl AppState {
             pending_config.update_interval_ms
         );
 
+        let visuals_window = VisualEngine::new(controller_output.clone());
+
         Self {
             active_config: config,
             pending_config,
@@ -77,7 +81,8 @@ impl AppState {
             audio_stream,
             analyzer_metrics,
             controller_output,
-            visualizer_open: false,
+            visuals_window_open: false,
+            visuals_window,
         }
     }
 
@@ -279,16 +284,37 @@ impl eframe::App for AppState {
 
             // Visualizer Window Button
             ui.horizontal(|ui| {
-                if ui.button("Open Visualizer window").clicked() {
-                    self.visualizer_open = true;
-                }
-                if self.visualizer_open {
-                    ui.colored_label(egui::Color32::GREEN, "Visualizer Ready");
+                ui.add_enabled_ui(!self.visuals_window_open, |ui| {
+                    if ui.button("Open Visualizer window").clicked() {
+                        self.visuals_window_open = true;
+                        info!("Visualizer window opened");
+                    }
+                });
+                if self.visuals_window_open {
+                    ui.colored_label(egui::Color32::GREEN, "Visuals running");
                 }
             });
         });
 
-        // Request repaint for real-time updates
+        // Visualizer Window (Separate OS Window)
+        if self.visuals_window_open {
+            let visualizer_id = egui::ViewportId::from_hash_of("edenfx_visualizer");
+
+            ctx.show_viewport_immediate(
+                visualizer_id,
+                egui::ViewportBuilder::default()
+                    .with_title("EDEN Visuals")
+                    .with_inner_size([800.0, 600.0])
+                    .with_resizable(true),
+                |ctx, _class| {
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.visuals_window_open = false;
+                    }
+                    self.visuals_window.render(ctx);
+                },
+            );
+        }
+
         ctx.request_repaint();
     }
 }

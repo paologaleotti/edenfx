@@ -3,6 +3,7 @@ mod audio_stream;
 mod config;
 mod controller;
 mod gui;
+mod visual_engine;
 
 use analyzer::{AudioAnalyzer, AudioMetrics};
 use config::AudioConfig;
@@ -78,7 +79,7 @@ fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([500.0, 600.0])
-            .with_title("EDEN audio visualizer"),
+            .with_title("EDEN controller"),
         ..Default::default()
     };
 
