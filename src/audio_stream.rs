@@ -38,12 +38,12 @@ pub fn create_audio_stream(
 
     // Get the device by matching name
     let device = if let Some(device_name) = devices.get(device_idx) {
-        debug!("Creating audio stream for device: {}", device_name);
+        debug!("Creating audio stream for device: {device_name}");
         host.input_devices()
             .ok()?
             .find(|d| d.name().ok().as_ref() == Some(device_name))
     } else {
-        debug!("No device found at index {}", device_idx);
+        debug!("No device found at index {device_idx}");
         None
     }?;
 
@@ -51,10 +51,10 @@ pub fn create_audio_stream(
     let sample_format = supported_config.sample_format();
     let stream_config: cpal::StreamConfig = supported_config.into();
 
-    debug!("Stream config: sample_rate={}, channels={}, format={:?}",
-        stream_config.sample_rate.0,
-        stream_config.channels,
-        sample_format);
+    debug!(
+        "Stream config: sample_rate={}, channels={}, format={:?}",
+        stream_config.sample_rate.0, stream_config.channels, sample_format
+    );
 
     AudioStream::new(&device, &stream_config, sample_format, analyzer).ok()
 }
