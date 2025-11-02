@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 pub struct AppState {
     config: Arc<Mutex<AudioConfig>>,
+    pending_config: AudioConfig, // Local copy for sliders
     devices: Vec<String>,
     selected_device_idx: usize,
     analyzer: Arc<Mutex<AudioAnalyzer>>,
@@ -27,14 +28,12 @@ impl AppState {
     ) -> Self {
         let host = cpal::default_host();
 
-        // Get all input device names
         let devices: Vec<String> = host
             .input_devices()
             .ok()
             .map(|iter| iter.filter_map(|d| d.name().ok()).collect())
             .unwrap_or_default();
 
-        // Find the default device and select it
         let default_device_name = host.default_input_device().and_then(|d| d.name().ok());
 
         let selected_device_idx = if let Some(ref default_name) = default_device_name {
@@ -46,12 +45,14 @@ impl AppState {
             0
         };
 
-        // Create initial audio stream
         let audio_stream =
             audio_stream::create_audio_stream(selected_device_idx, &devices, analyzer.clone());
 
+        let pending_config = config.lock().unwrap().clone();
+
         Self {
             config,
+            pending_config,
             devices,
             selected_device_idx,
             analyzer,
@@ -63,6 +64,12 @@ impl AppState {
     }
 
     fn apply_settings(&mut self) {
+        // Lock and copy pending config to shared config
+        {
+            let mut config = self.config.lock().unwrap();
+            *config = self.pending_config.clone();
+        }
+
         // Recreate the audio stream with the selected device
         self.audio_stream = audio_stream::create_audio_stream(
             self.selected_device_idx,
@@ -72,7 +79,8 @@ impl AppState {
     }
 
     fn reset_to_default(&mut self) {
-        *self.config.lock().unwrap() = AudioConfig::default();
+        let default_config = AudioConfig::default();
+        self.pending_config = default_config.clone();
     }
 }
 
@@ -148,8 +156,7 @@ impl eframe::App for AppState {
             });
             ui.separator();
 
-            // Configuration Sliders
-            let mut config = self.config.lock().unwrap();
+            // Configuration Sliders (modify pending config only)
             egui::CollapsingHeader::new("Bass Detection Settings")
                 .default_open(true)
                 .show(ui, |ui| {
@@ -160,15 +167,18 @@ impl eframe::App for AppState {
                             ui.label("Bass Freq Max (Hz):")
                                 .on_hover_text("What counts as 'bass' - lower = only deep bass");
                             ui.add(
-                                egui::Slider::new(&mut config.bass_freq_max, 20.0..=500.0)
-                                    .suffix(" Hz"),
+                                egui::Slider::new(
+                                    &mut self.pending_config.bass_freq_max,
+                                    20.0..=500.0,
+                                )
+                                .suffix(" Hz"),
                             );
                             ui.end_row();
 
                             ui.label("Bass Sensitivity:")
                                 .on_hover_text("Higher = more sensitive to bass");
                             ui.add(egui::Slider::new(
-                                &mut config.bass_energy_multiplier,
+                                &mut self.pending_config.bass_energy_multiplier,
                                 1.0..=5.0,
                             ));
                             ui.end_row();
@@ -176,7 +186,7 @@ impl eframe::App for AppState {
                             ui.label("Drop Threshold:")
                                 .on_hover_text("When to trigger DROP detection");
                             ui.add(egui::Slider::new(
-                                &mut config.drop_detection_threshold,
+                                &mut self.pending_config.drop_detection_threshold,
                                 0.0..=1.0,
                             ));
                             ui.end_row();
@@ -193,7 +203,7 @@ impl eframe::App for AppState {
                             ui.label("Loudness Sensitivity:")
                                 .on_hover_text("Higher = more sensitive to quiet sounds");
                             ui.add(egui::Slider::new(
-                                &mut config.loudness_multiplier,
+                                &mut self.pending_config.loudness_multiplier,
                                 5.0..=20.0,
                             ));
                             ui.end_row();
@@ -201,13 +211,15 @@ impl eframe::App for AppState {
                             ui.label("Update Interval (ms):")
                                 .on_hover_text("How often to analyze (lower = smoother)");
                             ui.add(
-                                egui::Slider::new(&mut config.update_interval_ms, 50..=500)
-                                    .suffix(" ms"),
+                                egui::Slider::new(
+                                    &mut self.pending_config.update_interval_ms,
+                                    50..=500,
+                                )
+                                .suffix(" ms"),
                             );
                             ui.end_row();
                         });
                 });
-            drop(config); // Release the lock
 
             ui.separator();
 
