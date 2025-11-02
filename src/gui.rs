@@ -1,21 +1,27 @@
 use crate::analyzer::AudioMetrics;
-use crate::audio_stream::AudioStream;
 use crate::config::APP_VERSION;
 use crate::config::AudioConfig;
+use crate::controller::ControllerOutput;
 use cpal::traits::{DeviceTrait, HostTrait};
 use eframe::egui;
+use std::sync::{Arc, Mutex};
 
 pub struct AppState {
     config: AudioConfig,
     devices: Vec<(usize, String)>,
     selected_device_idx: usize,
-    audio_stream: Option<AudioStream>,
-    metrics: AudioMetrics,
+    is_running: Arc<Mutex<bool>>,
+    analyzer_metrics: Arc<Mutex<AudioMetrics>>,
+    controller_output: Arc<Mutex<ControllerOutput>>,
     visualizer_open: bool,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+impl AppState {
+    pub fn new(
+        is_running: Arc<Mutex<bool>>,
+        analyzer_metrics: Arc<Mutex<AudioMetrics>>,
+        controller_output: Arc<Mutex<ControllerOutput>>,
+    ) -> Self {
         let host = cpal::default_host();
         let devices: Vec<(usize, String)> = host
             .input_devices()
@@ -31,8 +37,9 @@ impl Default for AppState {
             config: AudioConfig::default(),
             devices,
             selected_device_idx: 0,
-            audio_stream: None,
-            metrics: AudioMetrics::default(),
+            is_running,
+            analyzer_metrics,
+            controller_output,
             visualizer_open: false,
         }
     }
@@ -40,13 +47,10 @@ impl Default for AppState {
 
 impl eframe::App for AppState {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Update metrics if stream is active
-        if let Some(stream) = &self.audio_stream {
-            self.metrics = stream.get_metrics();
-        }
+        let is_running = *self.is_running.lock().unwrap();
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(format!("EDEN {}", APP_VERSION));
+            ui.heading(format!("EDEN {APP_VERSION}"));
             ui.separator();
 
             // Device Selection
@@ -66,14 +70,12 @@ impl eframe::App for AppState {
                     });
 
                 ui.horizontal(|ui| {
-                    if self.audio_stream.is_some() {
+                    if is_running {
                         if ui.button("⏹ Stop").clicked() {
-                            self.audio_stream = None;
+                            *self.is_running.lock().unwrap() = false;
                         }
-                    } else {
-                        if ui.button("▶ Start Listening").clicked() {
-                            self.start_audio();
-                        }
+                    } else if ui.button("▶ Start Listening").clicked() {
+                        *self.is_running.lock().unwrap() = true;
                     }
                 });
             });
@@ -81,20 +83,42 @@ impl eframe::App for AppState {
             ui.separator();
 
             // Real-time Metrics Display
-            if self.audio_stream.is_some() {
-                ui.group(|ui| {
-                    ui.label("Live Audio Metrics:");
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Loudness: {:.1}%", self.metrics.loudness * 100.0));
-                        ui.separator();
-                        ui.label(format!("Bass: {:.1}%", self.metrics.bass_energy * 100.0));
-                    });
+            if is_running {
+                let analyzer_metrics = self.analyzer_metrics.lock().unwrap().clone();
+                let controller_output = self.controller_output.lock().unwrap().clone();
 
+                // Analyzer Output (Debug)
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::LIGHT_BLUE, "Analyzer Output (Raw Metrics):");
                     ui.horizontal(|ui| {
-                        if self.metrics.is_drop {
+                        ui.label(format!(
+                            "Loudness: {:.1}%",
+                            analyzer_metrics.loudness * 100.0
+                        ));
+                        ui.separator();
+                        ui.label(format!(
+                            "Bass Energy: {:.1}%",
+                            analyzer_metrics.bass_energy * 100.0
+                        ));
+                    });
+                });
+
+                ui.add_space(5.0);
+
+                // Controller Output (Debug)
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::LIGHT_GREEN, "Controller Output:");
+                    ui.horizontal(|ui| {
+                        ui.label(format!(
+                            "Loudness (passthrough): {:.1}%",
+                            controller_output.loudness * 100.0
+                        ));
+                    });
+                    ui.horizontal(|ui| {
+                        if controller_output.is_drop {
                             ui.colored_label(egui::Color32::RED, "DROP DETECTED");
                         } else {
-                            ui.label("Normal");
+                            ui.colored_label(egui::Color32::GRAY, "Normal");
                         }
                     });
                 });
@@ -175,46 +199,5 @@ impl eframe::App for AppState {
 
         // Request repaint for real-time updates
         ctx.request_repaint();
-    }
-}
-
-impl AppState {
-    fn start_audio(&mut self) {
-        let host = cpal::default_host();
-
-        let mut devices = match host.input_devices() {
-            Ok(devices) => devices,
-            Err(_) => {
-                eprintln!("Failed to get input devices");
-                return;
-            }
-        };
-
-        let device = match devices.nth(self.selected_device_idx) {
-            Some(device) => device,
-            None => {
-                eprintln!("Selected device not found");
-                return;
-            }
-        };
-
-        let supported_config = match device.default_input_config() {
-            Ok(config) => config,
-            Err(_) => {
-                eprintln!("Failed to get default input config");
-                return;
-            }
-        };
-
-        let sample_format = supported_config.sample_format();
-        let config: cpal::StreamConfig = supported_config.into();
-
-        match AudioStream::new(&device, &config, sample_format, self.config.clone()) {
-            Ok(stream) => {
-                self.audio_stream = Some(stream);
-                println!("Audio stream started");
-            }
-            Err(e) => eprintln!("Failed to start audio: {}", e),
-        }
     }
 }

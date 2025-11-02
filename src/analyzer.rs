@@ -1,11 +1,10 @@
 use crate::config::AudioConfig;
 use rustfft::{FftPlanner, num_complex::Complex};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct AudioMetrics {
     pub loudness: f32,
     pub bass_energy: f32,
-    pub is_drop: bool,
 }
 
 pub struct AudioAnalyzer {
@@ -88,16 +87,13 @@ impl AudioAnalyzer {
         }
     }
 
-    // TODO move this in new logic abstraction layer!
     pub fn analyze(&mut self) -> AudioMetrics {
         let loudness = self.calculate_loudness();
         let bass_energy = self.calculate_bass_energy();
-        let is_drop = bass_energy > self.config.drop_detection_threshold && loudness > 0.7;
 
         AudioMetrics {
             loudness,
             bass_energy,
-            is_drop,
         }
     }
 }
