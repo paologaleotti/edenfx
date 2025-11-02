@@ -1,4 +1,5 @@
-use crate::analyzer::AudioMetrics;
+use crate::analyzer::{AudioAnalyzer, AudioMetrics};
+use crate::audio_stream::{self, AudioStream};
 use crate::config::APP_VERSION;
 use crate::config::AudioConfig;
 use crate::controller::ControllerOutput;
@@ -7,10 +8,11 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
-    config: AudioConfig,
-    devices: Vec<(usize, String)>,
+    config: Arc<Mutex<AudioConfig>>,
+    devices: Vec<String>,
     selected_device_idx: usize,
-    is_running: Arc<Mutex<bool>>,
+    analyzer: Arc<Mutex<AudioAnalyzer>>,
+    audio_stream: Option<AudioStream>,
     analyzer_metrics: Arc<Mutex<AudioMetrics>>,
     controller_output: Arc<Mutex<ControllerOutput>>,
     visualizer_open: bool,
@@ -18,114 +20,136 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        is_running: Arc<Mutex<bool>>,
+        config: Arc<Mutex<AudioConfig>>,
+        analyzer: Arc<Mutex<AudioAnalyzer>>,
         analyzer_metrics: Arc<Mutex<AudioMetrics>>,
         controller_output: Arc<Mutex<ControllerOutput>>,
     ) -> Self {
         let host = cpal::default_host();
-        let devices: Vec<(usize, String)> = host
+
+        // Get all input device names
+        let devices: Vec<String> = host
             .input_devices()
             .ok()
-            .map(|iter| {
-                iter.enumerate()
-                    .filter_map(|(i, d)| d.name().ok().map(|name| (i, name)))
-                    .collect()
-            })
+            .map(|iter| iter.filter_map(|d| d.name().ok()).collect())
             .unwrap_or_default();
 
+        // Find the default device and select it
+        let default_device_name = host.default_input_device().and_then(|d| d.name().ok());
+
+        let selected_device_idx = if let Some(ref default_name) = default_device_name {
+            devices
+                .iter()
+                .position(|name| name == default_name)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Create initial audio stream
+        let audio_stream =
+            audio_stream::create_audio_stream(selected_device_idx, &devices, analyzer.clone());
+
         Self {
-            config: AudioConfig::default(),
+            config,
             devices,
-            selected_device_idx: 0,
-            is_running,
+            selected_device_idx,
+            analyzer,
+            audio_stream,
             analyzer_metrics,
             controller_output,
             visualizer_open: false,
         }
     }
+
+    fn apply_settings(&mut self) {
+        // Recreate the audio stream with the selected device
+        self.audio_stream = audio_stream::create_audio_stream(
+            self.selected_device_idx,
+            &self.devices,
+            self.analyzer.clone(),
+        );
+    }
+
+    fn reset_to_default(&mut self) {
+        *self.config.lock().unwrap() = AudioConfig::default();
+    }
 }
 
 impl eframe::App for AppState {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let is_running = *self.is_running.lock().unwrap();
-
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("EDEN {APP_VERSION}"));
             ui.separator();
 
-            // Device Selection
+            // Device Selection and Settings
             ui.group(|ui| {
                 ui.label("Audio Input Device:");
                 egui::ComboBox::from_id_salt("device_selector")
                     .selected_text(
                         self.devices
                             .get(self.selected_device_idx)
-                            .map(|(_, name)| name.as_str())
+                            .map(|name| name.as_str())
                             .unwrap_or("No devices"),
                     )
                     .show_ui(ui, |ui| {
-                        for (idx, name) in &self.devices {
-                            ui.selectable_value(&mut self.selected_device_idx, *idx, name);
+                        for (idx, name) in self.devices.iter().enumerate() {
+                            ui.selectable_value(&mut self.selected_device_idx, idx, name);
                         }
                     });
 
-                ui.horizontal(|ui| {
-                    if is_running {
-                        if ui.button("⏹ Stop").clicked() {
-                            *self.is_running.lock().unwrap() = false;
-                        }
-                    } else if ui.button("▶ Start Listening").clicked() {
-                        *self.is_running.lock().unwrap() = true;
-                    }
-                });
+                if self.audio_stream.is_some() {
+                    ui.colored_label(egui::Color32::GREEN, "Listening");
+                } else {
+                    ui.colored_label(egui::Color32::RED, "No audio stream");
+                }
             });
 
             ui.separator();
 
             // Real-time Metrics Display
-            if is_running {
-                let analyzer_metrics = self.analyzer_metrics.lock().unwrap().clone();
-                let controller_output = self.controller_output.lock().unwrap().clone();
+            let analyzer_metrics = self.analyzer_metrics.lock().unwrap().clone();
+            let controller_output = self.controller_output.lock().unwrap().clone();
 
-                // Analyzer Output (Debug)
-                ui.group(|ui| {
-                    ui.colored_label(egui::Color32::LIGHT_BLUE, "Analyzer Output (Raw Metrics):");
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "Loudness: {:.1}%",
-                            analyzer_metrics.loudness * 100.0
-                        ));
-                        ui.separator();
-                        ui.label(format!(
-                            "Bass Energy: {:.1}%",
-                            analyzer_metrics.bass_energy * 100.0
-                        ));
-                    });
+            // Analyzer Output (Debug)
+            ui.group(|ui| {
+                ui.colored_label(egui::Color32::LIGHT_BLUE, "Analyzer Output (Raw Metrics):");
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Loudness: {:.1}%",
+                        analyzer_metrics.loudness * 100.0
+                    ));
+                    ui.separator();
+                    ui.label(format!(
+                        "Bass Energy: {:.1}%",
+                        analyzer_metrics.bass_energy * 100.0
+                    ));
                 });
+            });
 
-                ui.add_space(5.0);
+            ui.add_space(5.0);
 
-                // Controller Output (Debug)
-                ui.group(|ui| {
-                    ui.colored_label(egui::Color32::LIGHT_GREEN, "Controller Output:");
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "Loudness (passthrough): {:.1}%",
-                            controller_output.loudness * 100.0
-                        ));
-                    });
-                    ui.horizontal(|ui| {
-                        if controller_output.is_drop {
-                            ui.colored_label(egui::Color32::RED, "DROP DETECTED");
-                        } else {
-                            ui.colored_label(egui::Color32::GRAY, "Normal");
-                        }
-                    });
+            // Controller Output (Debug)
+            ui.group(|ui| {
+                ui.colored_label(egui::Color32::LIGHT_GREEN, "Controller Output:");
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Loudness (passthrough): {:.1}%",
+                        controller_output.loudness * 100.0
+                    ));
                 });
-                ui.separator();
-            }
+                ui.horizontal(|ui| {
+                    if controller_output.is_drop {
+                        ui.colored_label(egui::Color32::RED, "DROP DETECTED");
+                    } else {
+                        ui.colored_label(egui::Color32::GRAY, "Normal");
+                    }
+                });
+            });
+            ui.separator();
 
             // Configuration Sliders
+            let mut config = self.config.lock().unwrap();
             egui::CollapsingHeader::new("Bass Detection Settings")
                 .default_open(true)
                 .show(ui, |ui| {
@@ -136,7 +160,7 @@ impl eframe::App for AppState {
                             ui.label("Bass Freq Max (Hz):")
                                 .on_hover_text("What counts as 'bass' - lower = only deep bass");
                             ui.add(
-                                egui::Slider::new(&mut self.config.bass_freq_max, 20.0..=500.0)
+                                egui::Slider::new(&mut config.bass_freq_max, 20.0..=500.0)
                                     .suffix(" Hz"),
                             );
                             ui.end_row();
@@ -144,7 +168,7 @@ impl eframe::App for AppState {
                             ui.label("Bass Sensitivity:")
                                 .on_hover_text("Higher = more sensitive to bass");
                             ui.add(egui::Slider::new(
-                                &mut self.config.bass_energy_multiplier,
+                                &mut config.bass_energy_multiplier,
                                 1.0..=5.0,
                             ));
                             ui.end_row();
@@ -152,7 +176,7 @@ impl eframe::App for AppState {
                             ui.label("Drop Threshold:")
                                 .on_hover_text("When to trigger DROP detection");
                             ui.add(egui::Slider::new(
-                                &mut self.config.drop_detection_threshold,
+                                &mut config.drop_detection_threshold,
                                 0.0..=1.0,
                             ));
                             ui.end_row();
@@ -169,7 +193,7 @@ impl eframe::App for AppState {
                             ui.label("Loudness Sensitivity:")
                                 .on_hover_text("Higher = more sensitive to quiet sounds");
                             ui.add(egui::Slider::new(
-                                &mut self.config.loudness_multiplier,
+                                &mut config.loudness_multiplier,
                                 5.0..=20.0,
                             ));
                             ui.end_row();
@@ -177,12 +201,24 @@ impl eframe::App for AppState {
                             ui.label("Update Interval (ms):")
                                 .on_hover_text("How often to analyze (lower = smoother)");
                             ui.add(
-                                egui::Slider::new(&mut self.config.update_interval_ms, 50..=500)
+                                egui::Slider::new(&mut config.update_interval_ms, 50..=500)
                                     .suffix(" ms"),
                             );
                             ui.end_row();
                         });
                 });
+            drop(config); // Release the lock
+
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                if ui.button("Apply and reload").clicked() {
+                    self.apply_settings();
+                }
+                if ui.button("↺ Reset to default").clicked() {
+                    self.reset_to_default();
+                }
+            });
 
             ui.separator();
 
