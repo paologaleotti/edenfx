@@ -10,7 +10,7 @@ pub const BUFFER_SIZE: usize = 2048;
 /// Maximum frequency (in Hz) considered as "bass".
 /// Typical ranges: Sub-bass (20-60Hz), Bass (60-250Hz)
 /// Lower values = only deep bass, Higher values = include more mid-bass
-pub const BASS_FREQ_MAX: f32 = 150.0;
+pub const BASS_FREQ_MAX: f32 = 250.0;
 
 /// Multiplier to amplify bass energy readings.
 /// Higher = more sensitive to bass (drops will trigger easier)
