@@ -5,6 +5,7 @@ use crate::config::AudioConfig;
 use crate::controller::ControllerOutput;
 use cpal::traits::{DeviceTrait, HostTrait};
 use eframe::egui;
+use log::{debug, info};
 use std::sync::{Arc, Mutex};
 
 pub struct AppState {
@@ -27,6 +28,7 @@ impl AppState {
         analyzer_metrics: Arc<Mutex<AudioMetrics>>,
         controller_output: Arc<Mutex<ControllerOutput>>,
     ) -> Self {
+        debug!("Initializing GUI state...");
         let host = cpal::default_host();
 
         let devices: Vec<String> = host
@@ -34,6 +36,8 @@ impl AppState {
             .ok()
             .map(|iter| iter.filter_map(|d| d.name().ok()).collect())
             .unwrap_or_default();
+
+        debug!("Found {} audio input devices", devices.len());
 
         let default_device_name = host.default_input_device().and_then(|d| d.name().ok());
 
@@ -46,10 +50,22 @@ impl AppState {
             0
         };
 
+        let selected_device = devices
+            .get(selected_device_idx)
+            .map(|s| s.as_str())
+            .unwrap_or("None");
+        info!("Selected initial audio device: {selected_device}");
+
         let audio_stream =
             audio_stream::create_audio_stream(selected_device_idx, &devices, analyzer.clone());
 
         let pending_config = config.lock().unwrap().clone();
+        debug!(
+            "Initial config loaded: sample_rate={}, buffer_size={}, update_interval={}ms",
+            pending_config.sample_rate,
+            pending_config.buffer_size,
+            pending_config.update_interval_ms
+        );
 
         Self {
             active_config: config,
@@ -66,12 +82,24 @@ impl AppState {
     }
 
     fn apply_settings(&mut self) {
+        let device_name = self
+            .devices
+            .get(self.pending_device_idx)
+            .map(|s| s.as_str())
+            .unwrap_or("Unknown");
+
+        debug!(
+            "Applying settings - Device: {}, Config: {:?}",
+            device_name, self.pending_config
+        );
+
         // Lock and copy pending config to shared config
         {
             let mut config = self.active_config.lock().unwrap();
             *config = self.pending_config.clone();
         }
 
+        debug!("Reloading audio stream with new device...");
         self.audio_stream = audio_stream::create_audio_stream(
             self.pending_device_idx,
             &self.devices,
@@ -79,9 +107,11 @@ impl AppState {
         );
 
         self.active_device_idx = self.pending_device_idx;
+        info!("Settings applied successfully");
     }
 
     fn reset_to_default(&mut self) {
+        debug!("Resetting config to defaults");
         let default_config = AudioConfig::default();
         self.pending_config = default_config.clone();
     }

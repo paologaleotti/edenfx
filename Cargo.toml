@@ -1,5 +1,5 @@
 [package]
-name = "edenpoc"
+name = "edenfx"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,3 +9,5 @@ cpal = "0.16.0"
 eframe = "0.33.0"
 egui = "0.33.0"
 rustfft = "6.4.1"
+log = "0.4"
+env_logger = "0.11"

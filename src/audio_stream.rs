@@ -1,6 +1,7 @@
 use crate::analyzer::AudioAnalyzer;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat};
+use log::debug;
 use std::sync::{Arc, Mutex};
 
 pub struct AudioStream {
@@ -22,6 +23,7 @@ impl AudioStream {
         };
 
         stream.play()?;
+        debug!("Audio stream started successfully");
 
         Ok(Self { _stream: stream })
     }
@@ -36,16 +38,23 @@ pub fn create_audio_stream(
 
     // Get the device by matching name
     let device = if let Some(device_name) = devices.get(device_idx) {
+        debug!("Creating audio stream for device: {}", device_name);
         host.input_devices()
             .ok()?
             .find(|d| d.name().ok().as_ref() == Some(device_name))
     } else {
+        debug!("No device found at index {}", device_idx);
         None
     }?;
 
     let supported_config = device.default_input_config().ok()?;
     let sample_format = supported_config.sample_format();
     let stream_config: cpal::StreamConfig = supported_config.into();
+
+    debug!("Stream config: sample_rate={}, channels={}, format={:?}",
+        stream_config.sample_rate.0,
+        stream_config.channels,
+        sample_format);
 
     AudioStream::new(&device, &stream_config, sample_format, analyzer).ok()
 }
