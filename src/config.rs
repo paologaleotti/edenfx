@@ -31,7 +31,9 @@ pub struct AudioConfig {
     /// Lower = only loud sounds register high values
     pub loudness_multiplier: f32,
 
-    /// Update interval in milliseconds for printing analysis to console.
+    /// Update interval in milliseconds for audio processing.
+    /// Lower = more frequent updates, more CPU usage
+    /// Higher = less frequent updates, more latency
     pub update_interval_ms: u64,
 }
 
