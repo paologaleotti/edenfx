@@ -1,4 +1,4 @@
-use crate::analyzer::AudioAnalyzer;
+use super::analyzer::AudioAnalyzer;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat};
 use log::debug;

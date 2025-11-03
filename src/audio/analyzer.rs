@@ -1,6 +1,7 @@
-use crate::config::AudioConfig;
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::{Arc, Mutex};
+
+use crate::config::AudioConfig;
 
 #[derive(Clone, Default, Debug)]
 pub struct AudioMetrics {

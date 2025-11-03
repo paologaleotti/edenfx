@@ -1,18 +1,18 @@
-mod analyzer;
-mod audio_stream;
+mod audio;
 mod config;
 mod controller;
 mod gui;
-mod visual_engine;
+mod visual;
 
-use analyzer::{AudioAnalyzer, AudioMetrics};
-use config::AudioConfig;
+use audio::{AudioAnalyzer, AudioMetrics};
 use controller::{Controller, ControllerOutput};
 use log::{debug, info};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+use crate::config::AudioConfig;
 
 fn main() -> Result<(), eframe::Error> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();

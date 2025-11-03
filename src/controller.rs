@@ -1,4 +1,4 @@
-use crate::{analyzer::AudioMetrics, config::AudioConfig};
+use crate::{audio::AudioMetrics, config::AudioConfig};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default, Debug)]
