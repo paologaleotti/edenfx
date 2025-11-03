@@ -30,8 +30,7 @@ impl AudioAnalyzer {
         // Keep only the most recent samples
         let buffer_size = self.config.lock().unwrap().buffer_size;
         if self.buffer.len() > buffer_size {
-            self.buffer
-                .drain(0..self.buffer.len() - buffer_size);
+            self.buffer.drain(0..self.buffer.len() - buffer_size);
         }
     }
 
@@ -62,8 +61,7 @@ impl AudioAnalyzer {
         }
 
         // Prepare data for FFT
-        let mut complex_buffer: Vec<Complex<f32>> = self.buffer
-            [self.buffer.len() - buffer_size..]
+        let mut complex_buffer: Vec<Complex<f32>> = self.buffer[self.buffer.len() - buffer_size..]
             .iter()
             .map(|&x| Complex::new(x, 0.0))
             .collect();
@@ -111,5 +109,9 @@ impl AudioAnalyzer {
             loudness,
             bass_energy,
         }
+    }
+
+    pub fn get_buffer(&self) -> Vec<f32> {
+        self.buffer.clone()
     }
 }
