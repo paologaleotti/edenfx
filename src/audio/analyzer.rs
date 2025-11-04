@@ -1,5 +1,5 @@
 use rustfft::{FftPlanner, num_complex::Complex};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use crate::config::AudioConfig;
 
@@ -10,14 +10,14 @@ pub struct AudioMetrics {
 }
 
 pub struct AudioAnalyzer {
-    config: Arc<Mutex<AudioConfig>>,
+    config: Arc<RwLock<AudioConfig>>,
     buffer: Vec<f32>,
     fft_planner: FftPlanner<f32>,
 }
 
 impl AudioAnalyzer {
-    pub fn new(config: Arc<Mutex<AudioConfig>>) -> Self {
-        let buffer_size = config.lock().unwrap().buffer_size;
+    pub fn new(config: Arc<RwLock<AudioConfig>>) -> Self {
+        let buffer_size = config.read().unwrap().buffer_size;
         Self {
             buffer: Vec::with_capacity(buffer_size),
             fft_planner: FftPlanner::new(),
@@ -29,7 +29,7 @@ impl AudioAnalyzer {
         self.buffer.extend_from_slice(samples);
 
         // Keep only the most recent samples
-        let buffer_size = self.config.lock().unwrap().buffer_size;
+        let buffer_size = self.config.read().unwrap().buffer_size;
         if self.buffer.len() > buffer_size {
             self.buffer.drain(0..self.buffer.len() - buffer_size);
         }
@@ -45,12 +45,12 @@ impl AudioAnalyzer {
         let rms = (sum_squares / self.buffer.len() as f32).sqrt();
 
         // Convert to 0-1 scale
-        let loudness_multiplier = self.config.lock().unwrap().loudness_multiplier;
+        let loudness_multiplier = self.config.read().unwrap().loudness_multiplier;
         (rms * loudness_multiplier).min(1.0)
     }
 
     pub fn calculate_bass_energy(&mut self) -> f32 {
-        let config = self.config.lock().unwrap();
+        let config = self.config.read().unwrap();
         let buffer_size = config.buffer_size;
         let sample_rate = config.sample_rate;
         let bass_freq_max = config.bass_freq_max;

@@ -1,13 +1,13 @@
 use crate::controller::ControllerOutput;
 use eframe::egui;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 pub struct VisualEngine {
-    controller_output: Arc<Mutex<ControllerOutput>>,
+    controller_output: Arc<RwLock<ControllerOutput>>,
 }
 
 impl VisualEngine {
-    pub fn new(controller_output: Arc<Mutex<ControllerOutput>>) -> Self {
+    pub fn new(controller_output: Arc<RwLock<ControllerOutput>>) -> Self {
         Self { controller_output }
     }
 

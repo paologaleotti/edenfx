@@ -5,20 +5,20 @@ use crate::visual::VisualEngine;
 use cpal::traits::{DeviceTrait, HostTrait};
 use eframe::egui;
 use log::{debug, info};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use super::components::{render_config_panel, render_live_monitoring, render_waveform};
 
 pub struct AppState {
-    active_config: Arc<Mutex<AudioConfig>>,
+    active_config: Arc<RwLock<AudioConfig>>,
     pending_config: AudioConfig, // Local copy for sliders
     devices: Vec<String>,
     active_device_idx: usize,
     pending_device_idx: usize, // Local selection for device selector
     analyzer: Arc<Mutex<AudioAnalyzer>>,
     audio_stream: Option<AudioStream>,
-    analyzer_metrics: Arc<Mutex<AudioMetrics>>,
-    controller_output: Arc<Mutex<ControllerOutput>>,
+    analyzer_metrics: Arc<RwLock<AudioMetrics>>,
+    controller_output: Arc<RwLock<ControllerOutput>>,
     visuals_window_open: bool,
     visuals_window: VisualEngine,
 }
@@ -36,10 +36,10 @@ impl eframe::App for AppState {
 
 impl AppState {
     pub fn new(
-        config: Arc<Mutex<AudioConfig>>,
+        config: Arc<RwLock<AudioConfig>>,
         analyzer: Arc<Mutex<AudioAnalyzer>>,
-        analyzer_metrics: Arc<Mutex<AudioMetrics>>,
-        controller_output: Arc<Mutex<ControllerOutput>>,
+        analyzer_metrics: Arc<RwLock<AudioMetrics>>,
+        controller_output: Arc<RwLock<ControllerOutput>>,
     ) -> Self {
         debug!("Initializing GUI state...");
         let host = cpal::default_host();
@@ -72,7 +72,7 @@ impl AppState {
         let audio_stream =
             audio_stream::create_audio_stream(selected_device_idx, &devices, analyzer.clone());
 
-        let pending_config = config.lock().unwrap().clone();
+        let pending_config = config.read().unwrap().clone();
         debug!(
             "Initial config loaded: sample_rate={}, buffer_size={}, update_interval={}ms",
             pending_config.sample_rate,
@@ -111,7 +111,7 @@ impl AppState {
 
         // Lock and copy pending config to shared config
         {
-            let mut config = self.active_config.lock().unwrap();
+            let mut config = self.active_config.write().unwrap();
             *config = self.pending_config.clone();
         }
 
@@ -133,7 +133,7 @@ impl AppState {
     }
 
     fn disable_apply_button(&self) -> bool {
-        let config_unchanged = self.pending_config == *self.active_config.lock().unwrap();
+        let config_unchanged = self.pending_config == *self.active_config.read().unwrap();
         let device_unchanged = self.pending_device_idx == self.active_device_idx;
 
         config_unchanged && device_unchanged
@@ -221,8 +221,8 @@ impl AppState {
                     ui.add_space(8.0);
 
                     // Live Monitoring Section
-                    let analyzer_metrics = self.analyzer_metrics.lock().unwrap().clone();
-                    let controller_output = self.controller_output.lock().unwrap().clone();
+                    let analyzer_metrics = self.analyzer_metrics.read().unwrap().clone();
+                    let controller_output = self.controller_output.read().unwrap().clone();
                     render_live_monitoring(ui, &analyzer_metrics, &controller_output);
 
                     // Waveform Visualization

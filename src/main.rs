@@ -8,7 +8,7 @@ use audio::{AudioAnalyzer, AudioMetrics};
 use controller::{Controller, ControllerOutput};
 use log::{debug, info};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -20,9 +20,9 @@ fn main() -> Result<(), eframe::Error> {
     info!("Starting up...");
 
     // === Shared State ===
-    let analyzer_metrics = Arc::new(Mutex::new(AudioMetrics::default()));
-    let controller_output = Arc::new(Mutex::new(ControllerOutput::default()));
-    let config = Arc::new(Mutex::new(AudioConfig::default()));
+    let analyzer_metrics = Arc::new(RwLock::new(AudioMetrics::default()));
+    let controller_output = Arc::new(RwLock::new(ControllerOutput::default()));
+    let config = Arc::new(RwLock::new(AudioConfig::default()));
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // === Analyzer Setup ===
@@ -39,12 +39,12 @@ fn main() -> Result<(), eframe::Error> {
         thread::spawn(move || {
             debug!("Analyzer thread started");
             while !shutdown.load(Ordering::Relaxed) {
-                let interval = config.lock().unwrap().update_interval_ms;
+                let interval = config.read().unwrap().update_interval_ms;
                 thread::sleep(Duration::from_millis(interval));
 
                 if !shutdown.load(Ordering::Relaxed) {
                     let new_metrics = analyzer.lock().unwrap().analyze();
-                    *metrics.lock().unwrap() = new_metrics;
+                    *metrics.write().unwrap() = new_metrics;
                 }
             }
             debug!("Analyzer thread shutting down");
@@ -63,13 +63,13 @@ fn main() -> Result<(), eframe::Error> {
         thread::spawn(move || {
             debug!("Controller thread started");
             while !shutdown.load(Ordering::Relaxed) {
-                let interval = config.lock().unwrap().update_interval_ms;
+                let interval = config.read().unwrap().update_interval_ms;
                 thread::sleep(Duration::from_millis(interval));
 
                 if !shutdown.load(Ordering::Relaxed) {
-                    let current_metrics = metrics.lock().unwrap().clone();
+                    let current_metrics = metrics.read().unwrap().clone();
                     let new_output = controller.process(current_metrics);
-                    *output.lock().unwrap() = new_output;
+                    *output.write().unwrap() = new_output;
                 }
             }
             debug!("Controller thread shutting down");
